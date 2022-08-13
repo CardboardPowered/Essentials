@@ -6,6 +6,7 @@ import com.earth2me.essentials.User;
 import com.earth2me.essentials.UserMap;
 import com.earth2me.essentials.economy.EconomyLayer;
 import com.earth2me.essentials.economy.EconomyLayers;
+import com.earth2me.essentials.utils.CommandMapUtil;
 import com.earth2me.essentials.utils.DateUtil;
 import com.earth2me.essentials.utils.EnumUtil;
 import com.earth2me.essentials.utils.FloatUtil;
@@ -25,6 +26,7 @@ import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.command.Command;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginDescriptionFile;
@@ -42,6 +44,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -76,7 +79,12 @@ public class Commandessentials extends EssentialsCommand {
         "PermissionsEx", // permissions (unsupported)
         "GroupManager", // permissions (unsupported)
         "bPermissions", // permissions (unsupported)
-        "DiscordSRV" // potential for issues if EssentialsXDiscord is installed
+        "DiscordSRV", // potential for issues if EssentialsXDiscord is installed
+
+        // Chat signing bypass plugins that can potentially break EssentialsChat
+        "AntiPopup",
+        "NoChatReports",
+        "NoEncryption"
     );
     private static final List<String> officialPlugins = Arrays.asList(
         "EssentialsAntiBuild",
@@ -90,7 +98,11 @@ public class Commandessentials extends EssentialsCommand {
     private static final List<String> warnPlugins = Arrays.asList(
         "PermissionsEx",
         "GroupManager",
-        "bPermissions"
+        "bPermissions",
+
+        // Brain-dead chat signing bypass that break EssentialsChat
+        "NoChatReports",
+        "NoEncryption"
     );
     private transient TuneRunnable currentTune = null;
 
@@ -190,6 +202,7 @@ public class Commandessentials extends EssentialsCommand {
         serverData.addProperty("bukkit-version", Bukkit.getBukkitVersion());
         serverData.addProperty("server-version", Bukkit.getVersion());
         serverData.addProperty("server-brand", Bukkit.getName());
+        serverData.addProperty("online-mode", ess.getOnlineModeProvider().getOnlineModeString());
         final JsonObject supportStatus = new JsonObject();
         final VersionUtil.SupportStatus status = VersionUtil.getServerSupportStatus();
         supportStatus.addProperty("status", status.name());
@@ -257,6 +270,10 @@ public class Commandessentials extends EssentialsCommand {
         files.add(new PasteUtil.PasteFile("dump.json", dump.toString()));
 
         final Plugin essDiscord = Bukkit.getPluginManager().getPlugin("EssentialsDiscord");
+        final Plugin essSpawn = Bukkit.getPluginManager().getPlugin("EssentialsSpawn");
+
+        final Map<String, Command> knownCommandsCopy = new HashMap<>(ess.getKnownCommandsProvider().getKnownCommands());
+        final Map<String, String> disabledCommandsCopy = new HashMap<>(ess.getAlternativeCommandsHandler().disabledCommands());
 
         // Further operations will be heavy IO
         ess.runTaskAsynchronously(() -> {
@@ -264,12 +281,20 @@ public class Commandessentials extends EssentialsCommand {
             boolean discord = false;
             boolean kits = false;
             boolean log = false;
+            boolean worth = false;
+            boolean tpr = false;
+            boolean spawns = false;
+            boolean commands = false;
             for (final String arg : args) {
-                if (arg.equals("*")) {
+                if (arg.equals("*") || arg.equalsIgnoreCase("all")) {
                     config = true;
                     discord = true;
                     kits = true;
                     log = true;
+                    worth = true;
+                    tpr = true;
+                    spawns = true;
+                    commands = true;
                     break;
                 } else if (arg.equalsIgnoreCase("config")) {
                     config = true;
@@ -279,6 +304,14 @@ public class Commandessentials extends EssentialsCommand {
                     kits = true;
                 } else if (arg.equalsIgnoreCase("log")) {
                     log = true;
+                } else if (arg.equalsIgnoreCase("worth")) {
+                    worth = true;
+                } else if (arg.equalsIgnoreCase("tpr")) {
+                    tpr = true;
+                } else if (arg.equalsIgnoreCase("spawns")) {
+                    spawns = true;
+                } else if (arg.equalsIgnoreCase("commands")) {
+                    commands = true;
                 }
             }
 
@@ -290,11 +323,11 @@ public class Commandessentials extends EssentialsCommand {
                 }
             }
 
-            if (discord && essDiscord != null && essDiscord.isEnabled()) {
+            if (discord && essDiscord != null) {
                 try {
                     files.add(new PasteUtil.PasteFile("discord-config.yml",
                             new String(Files.readAllBytes(essDiscord.getDataFolder().toPath().resolve("config.yml")), StandardCharsets.UTF_8)
-                                    .replaceAll("[MN][A-Za-z\\d]{23}\\.[\\w-]{6}\\.[\\w-]{27}", "<censored token>")));
+                                    .replaceAll("[A-Za-z\\d]{24}\\.[\\w-]{6}\\.[\\w-]{27}", "<censored token>")));
                 } catch (IOException e) {
                     sender.sendMessage(tl("dumpErrorUpload", "discord-config.yml", e.getMessage()));
                 }
@@ -315,6 +348,40 @@ public class Commandessentials extends EssentialsCommand {
                             .replaceAll("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}", "<censored ip address>")));
                 } catch (IOException e) {
                     sender.sendMessage(tl("dumpErrorUpload", "latest.log", e.getMessage()));
+                }
+            }
+
+            if (worth) {
+                try {
+                    files.add(new PasteUtil.PasteFile("worth.yml", new String(Files.readAllBytes(ess.getWorth().getFile().toPath()), StandardCharsets.UTF_8)));
+                } catch (IOException e) {
+                    sender.sendMessage(tl("dumpErrorUpload", "worth.yml", e.getMessage()));
+                }
+            }
+
+            if (tpr) {
+                try {
+                    files.add(new PasteUtil.PasteFile("tpr.yml", new String(Files.readAllBytes(ess.getRandomTeleport().getFile().toPath()), StandardCharsets.UTF_8)));
+                } catch (IOException e) {
+                    sender.sendMessage(tl("dumpErrorUpload", "tpr.yml", e.getMessage()));
+                }
+            }
+
+            if (spawns && essSpawn != null) {
+                try {
+                    files.add(new PasteUtil.PasteFile("spawn.yml", new String(Files.readAllBytes(ess.getDataFolder().toPath().resolve("spawn.yml")), StandardCharsets.UTF_8)));
+                } catch (IOException e) {
+                    sender.sendMessage(tl("dumpErrorUpload", "spawn.yml", e.getMessage()));
+                }
+            }
+
+            if (commands) {
+                try {
+                    files.add(new PasteUtil.PasteFile("commands.yml", new String(Files.readAllBytes(Paths.get("commands.yml")), StandardCharsets.UTF_8)));
+                    files.add(new PasteUtil.PasteFile("commandmap.json", CommandMapUtil.toJsonPretty(ess, knownCommandsCopy)));
+                    files.add(new PasteUtil.PasteFile("commandoverride.json", disabledCommandsCopy.toString()));
+                } catch (IOException e) {
+                    sender.sendMessage(tl("dumpErrorUpload", "commands.yml", e.getMessage()));
                 }
             }
 
@@ -374,7 +441,7 @@ public class Commandessentials extends EssentialsCommand {
     private void runMoo(final Server server, final CommandSource sender, final String command, final String[] args) {
         if (args.length == 2 && args[1].equals("moo")) {
             for (final String s : CONSOLE_MOO) {
-                logger.info(s);
+                ess.getLogger().info(s);
             }
             for (final Player player : ess.getOnlinePlayers()) {
                 player.sendMessage(PLAYER_MOO);
@@ -645,6 +712,9 @@ public class Commandessentials extends EssentialsCommand {
             case DANGEROUS_FORK:
                 sender.sendMessage(ChatColor.DARK_RED + tl("serverUnsupportedDangerous"));
                 break;
+            case STUPID_PLUGIN:
+                sender.sendMessage(ChatColor.DARK_RED + tl("serverUnsupportedDumbPlugins"));
+                break;
             case UNSTABLE:
                 sender.sendMessage(ChatColor.DARK_RED + tl("serverUnsupportedMods"));
                 break;
@@ -718,9 +788,9 @@ public class Commandessentials extends EssentialsCommand {
                 }
                 break;
             case "dump":
-                final List<String> list = Lists.newArrayList("config", "kits", "log", "discord", "*");
+                final List<String> list = Lists.newArrayList("config", "kits", "log", "discord", "worth", "tpr", "spawns", "commands", "all");
                 for (String arg : args) {
-                    if (arg.equals("*")) {
+                    if (arg.equals("*") || arg.equalsIgnoreCase("all")) {
                         list.clear();
                         return list;
                     }

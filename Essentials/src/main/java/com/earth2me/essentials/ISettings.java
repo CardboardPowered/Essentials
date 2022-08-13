@@ -46,6 +46,12 @@ public interface ISettings extends IConf {
 
     char getChatQuestion();
 
+    boolean isShoutDefault();
+
+    boolean isPersistShout();
+
+    boolean isChatQuestionEnabled();
+
     BigDecimal getCommandCost(IEssentialsCommand cmd);
 
     BigDecimal getCommandCost(String label);
@@ -228,6 +234,8 @@ public interface ISettings extends IConf {
 
     boolean isWorldHomePermissions();
 
+    int getMaxTreeCommandRange();
+
     boolean registerBackInListener();
 
     boolean getDisableItemPickupWhileAfk();
@@ -237,6 +245,8 @@ public interface ISettings extends IConf {
     EventPriority getSpawnJoinPriority();
 
     long getTpaAcceptCancellation();
+
+    int getTpaMaxRequests();
 
     long getTeleportInvulnerability();
 

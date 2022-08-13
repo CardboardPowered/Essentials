@@ -4,19 +4,24 @@ import club.minnced.discord.webhook.WebhookClient;
 import club.minnced.discord.webhook.WebhookClientBuilder;
 import club.minnced.discord.webhook.send.WebhookMessage;
 import club.minnced.discord.webhook.send.WebhookMessageBuilder;
+import com.earth2me.essentials.IEssentialsModule;
 import com.earth2me.essentials.User;
 import com.earth2me.essentials.utils.FormatUtil;
+import com.earth2me.essentials.utils.NumberUtil;
 import com.earth2me.essentials.utils.VersionUtil;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Emote;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.TextChannel;
 import net.dv8tion.jda.api.entities.Webhook;
 import net.dv8tion.jda.api.events.ShutdownEvent;
 import net.dv8tion.jda.api.hooks.EventListener;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.utils.cache.CacheFlag;
 import net.ess3.nms.refl.providers.AchievementListenerProvider;
 import net.ess3.nms.refl.providers.AdvancementListenerProvider;
+import net.ess3.provider.providers.PaperAdvancementListenerProvider;
 import net.essentialsx.api.v2.events.discord.DiscordMessageEvent;
 import net.essentialsx.api.v2.services.discord.DiscordService;
 import net.essentialsx.api.v2.services.discord.InteractionController;
@@ -33,7 +38,6 @@ import net.essentialsx.discord.listeners.DiscordListener;
 import net.essentialsx.discord.util.ConsoleInjector;
 import net.essentialsx.discord.util.DiscordUtil;
 import net.essentialsx.discord.util.MessageUtil;
-import org.apache.commons.lang.math.NumberUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
@@ -51,11 +55,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.earth2me.essentials.I18n.tl;
 
-public class JDADiscordService implements DiscordService {
-    private final static Logger logger = Logger.getLogger("EssentialsDiscord");
+public class JDADiscordService implements DiscordService, IEssentialsModule {
+    private final static Logger logger = EssentialsDiscord.getWrappedLogger();
     private final EssentialsDiscord plugin;
     private final Unsafe unsafe = this::getJda;
 
@@ -80,12 +85,14 @@ public class JDADiscordService implements DiscordService {
     }
 
     public TextChannel getChannel(String key, boolean primaryFallback) {
-        long resolvedId;
-        try {
-            resolvedId = Long.parseLong(key);
-        } catch (NumberFormatException ignored) {
-            resolvedId = getSettings().getChannelId(getSettings().getMessageChannel(key));
+        if (NumberUtil.isLong(key)) {
+            return getDefinedChannel(key, primaryFallback);
         }
+        return getDefinedChannel(getSettings().getMessageChannel(key), primaryFallback);
+    }
+
+    public TextChannel getDefinedChannel(String key, boolean primaryFallback) {
+        final long resolvedId = getSettings().getChannelId(key);
 
         if (isDebug()) {
             logger.log(Level.INFO, "Channel definition " + key + " resolved as " + resolvedId);
@@ -141,18 +148,20 @@ public class JDADiscordService implements DiscordService {
     public void startup() throws LoginException, InterruptedException {
         shutdown();
 
+        invalidStartup = true;
         logger.log(Level.INFO, tl("discordLoggingIn"));
         if (plugin.getSettings().getBotToken().replace("INSERT-TOKEN-HERE", "").trim().isEmpty()) {
-            invalidStartup = true;
             throw new IllegalArgumentException(tl("discordErrorNoToken"));
         }
 
         jda = JDABuilder.createDefault(plugin.getSettings().getBotToken())
                 .addEventListeners(new DiscordListener(this))
+                .enableCache(CacheFlag.EMOTE)
+                .disableCache(CacheFlag.MEMBER_OVERRIDES, CacheFlag.VOICE_STATE)
                 .setContextEnabled(false)
-                .setRawEventsEnabled(true)
                 .build()
                 .awaitReady();
+        invalidStartup = false;
         updatePresence();
         logger.log(Level.INFO, tl("discordLoggingInDone", jda.getSelfUser().getAsTag()));
 
@@ -182,6 +191,9 @@ public class JDADiscordService implements DiscordService {
         } catch (InteractionException ignored) {
         }
 
+        // Load emotes into cache, JDA will handle updates from here on out.
+        guild.retrieveEmotes().queue();
+
         updatePrimaryChannel();
 
         updateConsoleRelay();
@@ -196,7 +208,12 @@ public class JDADiscordService implements DiscordService {
 
         try {
             if (VersionUtil.getServerBukkitVersion().isHigherThanOrEqualTo(VersionUtil.v1_12_0_R01)) {
-                Bukkit.getPluginManager().registerEvents(new AdvancementListenerProvider(), plugin);
+                try {
+                    Class.forName("io.papermc.paper.advancement.AdvancementDisplay");
+                    Bukkit.getPluginManager().registerEvents(new PaperAdvancementListenerProvider(), plugin);
+                } catch (ClassNotFoundException e) {
+                    Bukkit.getPluginManager().registerEvents(new AdvancementListenerProvider(), plugin);
+                }
             } else {
                 Bukkit.getPluginManager().registerEvents(new AchievementListenerProvider(), plugin);
             }
@@ -229,7 +246,7 @@ public class JDADiscordService implements DiscordService {
 
     @Override
     public void sendMessage(MessageType type, String message, boolean allowGroupMentions) {
-        if (!registeredTypes.containsKey(type.getKey()) && !NumberUtils.isDigits(type.getKey())) {
+        if (!registeredTypes.containsKey(type.getKey()) && !NumberUtil.isLong(type.getKey())) {
             logger.warning("Sending message to channel \"" + type.getKey() + "\" which is an unregistered type! If you are a plugin author, you should be registering your MessageType before using them.");
         }
         final DiscordMessageEvent event = new DiscordMessageEvent(type, FormatUtil.stripFormat(message), allowGroupMentions);
@@ -267,11 +284,23 @@ public class JDADiscordService implements DiscordService {
         TextChannel channel = guild.getTextChannelById(plugin.getSettings().getPrimaryChannelId());
         if (channel == null) {
             channel = guild.getDefaultChannel();
-            if (channel == null || !channel.canTalk()) {
+            if (channel == null) {
                 throw new RuntimeException(tl("discordErrorNoPerms"));
             }
+            logger.warning(tl("discordErrorNoPrimary", channel.getName()));
+        }
+
+        if (!channel.canTalk()) {
+            throw new RuntimeException(tl("discordErrorNoPrimaryPerms", channel.getName()));
         }
         primaryChannel = channel;
+    }
+
+    public String parseMessageEmotes(String message) {
+        for (final Emote emote : guild.getEmoteCache()) {
+            message = message.replaceAll(":" + Pattern.quote(emote.getName()) + ":", emote.getAsMention());
+        }
+        return message;
     }
 
     public void updatePresence() {

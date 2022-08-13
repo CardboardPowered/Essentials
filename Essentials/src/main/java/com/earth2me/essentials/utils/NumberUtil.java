@@ -104,10 +104,35 @@ public final class NumberUtil {
         return true;
     }
 
+    public static boolean isLong(final String sLong) {
+        try {
+            Long.parseLong(sLong);
+        } catch (final NumberFormatException e) {
+            return false;
+        }
+        return true;
+    }
+
     public static boolean isPositiveInt(final String sInt) {
         if (!isInt(sInt)) {
             return false;
         }
         return Integer.parseInt(sInt) > 0;
+    }
+
+    public static boolean isNumeric(final String sNum) {
+        for (final char sChar : sNum.toCharArray()) {
+            if (!Character.isDigit(sChar)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Backport from Guava.
+     */
+    public static int constrainToRange(int value, int min, int max) {
+        return Math.min(Math.max(value, min), max);
     }
 }

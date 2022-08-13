@@ -26,14 +26,12 @@ import java.util.Map;
 import java.util.MissingResourceException;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.earth2me.essentials.I18n.tl;
 
 public abstract class EssentialsCommand implements IEssentialsCommand {
-    protected static final Logger logger = Logger.getLogger("Essentials");
     /**
      * Common time durations (in seconds), for use in tab completion.
      */
@@ -112,11 +110,15 @@ public abstract class EssentialsCommand implements IEssentialsCommand {
 
     // Get online players - only show vanished if source has permission
     protected User getPlayer(final Server server, final CommandSource sender, final String[] args, final int pos) throws PlayerNotFoundException, NotEnoughArgumentsException {
+        return getPlayer(server, sender, args, pos, false);
+    }
+
+    protected User getPlayer(final Server server, final CommandSource sender, final String[] args, final int pos, final boolean getOffline) throws PlayerNotFoundException, NotEnoughArgumentsException {
         if (sender.isPlayer()) {
             final User user = ess.getUser(sender.getPlayer());
-            return getPlayer(server, user, args, pos);
+            return getPlayer(server, user, args, pos, getOffline);
         }
-        return getPlayer(server, args, pos, true, false);
+        return getPlayer(server, args, pos, true, getOffline);
     }
 
     // Get online players - only show vanished if source has permission
@@ -130,7 +132,11 @@ public abstract class EssentialsCommand implements IEssentialsCommand {
 
     // Get online players - only show vanished if source has permission
     protected User getPlayer(final Server server, final User user, final String[] args, final int pos) throws PlayerNotFoundException, NotEnoughArgumentsException {
-        return getPlayer(server, user, args, pos, user.canInteractVanished(), false);
+        return getPlayer(server, user, args, pos, false);
+    }
+
+    protected User getPlayer(final Server server, final User user, final String[] args, final int pos, final boolean getOffline) throws PlayerNotFoundException, NotEnoughArgumentsException {
+        return getPlayer(server, user, args, pos, user.canInteractVanished(), getOffline);
     }
 
     // Get online or offline players, this method allows for raw access
@@ -326,7 +332,7 @@ public abstract class EssentialsCommand implements IEssentialsCommand {
     public void showError(final CommandSender sender, final Throwable throwable, final String commandLabel) {
         sender.sendMessage(tl("errorWithMessage", throwable.getMessage()));
         if (ess.getSettings().isDebug()) {
-            logger.log(Level.INFO, tl("errorCallingCommand", commandLabel), throwable);
+            ess.getLogger().log(Level.INFO, tl("errorCallingCommand", commandLabel), throwable);
             throwable.printStackTrace();
         }
     }

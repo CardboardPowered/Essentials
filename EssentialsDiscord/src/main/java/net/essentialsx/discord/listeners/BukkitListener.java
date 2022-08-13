@@ -9,6 +9,7 @@ import net.ess3.api.events.MuteStatusChangeEvent;
 import net.ess3.api.events.VanishStatusChangeEvent;
 import net.ess3.provider.AbstractAchievementEvent;
 import net.essentialsx.api.v2.events.AsyncUserDataLoadEvent;
+import net.essentialsx.api.v2.events.UserActionEvent;
 import net.essentialsx.api.v2.events.discord.DiscordChatMessageEvent;
 import net.essentialsx.api.v2.events.discord.DiscordMessageEvent;
 import net.essentialsx.api.v2.services.discord.MessageType;
@@ -119,7 +120,7 @@ public class BukkitListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onVanishStatusChange(VanishStatusChangeEvent event) {
-        if (!jda.getSettings().isVanishFakeJoinLeave()) {
+        if (!jda.getSettings().isVanishFakeJoinLeave() || event.getAffected().isLeavingHidden()) {
             return;
         }
         if (event.getValue()) {
@@ -203,6 +204,20 @@ public class BukkitListener implements Listener {
                 event.getPlayer());
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAction(UserActionEvent event) {
+        if (isVanishHide(event.getUser())) {
+            return;
+        }
+
+        sendDiscordMessage(MessageType.DefaultTypes.ACTION,
+                MessageUtil.formatMessage(jda.getSettings().getActionFormat(event.getUser().getBase()),
+                        MessageUtil.sanitizeDiscordMarkdown(event.getUser().getName()),
+                        MessageUtil.sanitizeDiscordMarkdown(event.getUser().getDisplayName()),
+                        event.getMessage()),
+                event.getUser().getBase());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onKick(PlayerKickEvent event) {
         if (isVanishHide(event.getPlayer())) {
@@ -220,7 +235,7 @@ public class BukkitListener implements Listener {
     }
 
     private boolean isVanishHide(final IUser user) {
-        return jda.getSettings().isVanishHideMessages() && user.isHidden();
+        return jda.getSettings().isVanishHideMessages() && (user.isHidden() || user.isLeavingHidden());
     }
 
     private void sendDiscordMessage(final MessageType messageType, final String message) {

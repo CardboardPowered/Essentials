@@ -2,9 +2,16 @@ plugins {
     id("essentials.base-conventions")
 }
 
+java {
+    disableAutoTargetJvm()
+}
+
 dependencies {
-    implementation project(':providers:BaseProviders')
-    compileOnly 'com.destroystokyo.paper:paper-api:1.16.5-R0.1-SNAPSHOT'
+    implementation(project(':providers:BaseProviders')) {
+        exclude(module: 'spigot-api')
+    }
+    compileOnly 'io.papermc.paper:paper-api:1.18.2-R0.1-SNAPSHOT'
+    compileOnly 'io.papermc.paper:paper-mojangapi:1.18.2-R0.1-SNAPSHOT'
 }
 
 essentials {

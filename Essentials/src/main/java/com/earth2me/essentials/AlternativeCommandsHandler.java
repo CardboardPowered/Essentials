@@ -11,10 +11,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class AlternativeCommandsHandler {
-    private static final Logger LOGGER = Logger.getLogger("Essentials");
     private final transient Map<String, List<Command>> altcommands = new HashMap<>();
     private final transient Map<String, String> disabledList = new HashMap<>();
     private final transient IEssentials ess;
@@ -29,11 +27,12 @@ public class AlternativeCommandsHandler {
     }
 
     public final void addPlugin(final Plugin plugin) {
-        if (plugin.getDescription().getMain().contains("com.earth2me.essentials")) {
+        if (plugin.getDescription().getMain().contains("com.earth2me.essentials") || plugin.getDescription().getMain().contains("net.essentialsx")) {
             return;
         }
         for (final Map.Entry<String, Command> entry : getPluginCommands(plugin).entrySet()) {
-            final String commandName = entry.getKey().contains(":") ? entry.getKey().split(":")[1] : entry.getKey();
+            final String[] commandSplit = entry.getKey().split(":", 2);
+            final String commandName = commandSplit.length > 1 ? commandSplit[1] : entry.getKey();
             final Command command = entry.getValue();
 
             final List<Command> pluginCommands = altcommands.computeIfAbsent(commandName.toLowerCase(Locale.ENGLISH), k -> new ArrayList<>());
@@ -94,7 +93,7 @@ public class AlternativeCommandsHandler {
         if (pc instanceof PluginIdentifiableCommand) {
             final String altString = ((PluginIdentifiableCommand) pc).getPlugin().getName() + ":" + pc.getName();
             if (ess.getSettings().isDebug()) {
-                LOGGER.log(Level.INFO, "Essentials: Alternative command " + label + " found, using " + altString);
+                ess.getLogger().log(Level.INFO, "Essentials: Alternative command " + label + " found, using " + altString);
             }
             disabledList.put(label, altString);
         }
